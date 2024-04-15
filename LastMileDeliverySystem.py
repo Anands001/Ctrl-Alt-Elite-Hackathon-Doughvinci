@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta
 import random
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 
 class Order:
     def __init__(self, order_id, kitchen_id, customer_id, pickup_time, location):
@@ -63,6 +66,33 @@ def group_orders(orders):
 
     # Rule #3: Group orders from the same kitchen to two different customers
     group_orders_by_rule(lambda order: order.kitchen_id)
+
+    # Rule #4: Group orders to the same customer with 2nd kitchen pickup on the way
+    customer_kitchen_pickup = {}
+    for order in orders:
+        key = (order.customer_id, order.kitchen_id)
+        if key in customer_kitchen_pickup:
+            customer_kitchen_pickup[key].append(order)
+        else:
+            customer_kitchen_pickup[key] = [order]
+    for _, orders in customer_kitchen_pickup.items():
+        if len(orders) == 2:
+            # Check if the pickup times are 10 minutes apart
+            pickup_times = [datetime.strptime(order.pickup_time, '%I:%M %p') for order in orders]
+            time_diff = (pickup_times[1] - pickup_times[0]).total_seconds() / 60
+            if time_diff == 10:
+                grouped_orders.append(orders)
+
+    # Rule #5: Group orders with 2nd customer drop on the way to the 1st customer
+    for order1 in orders:
+        for order2 in orders:
+            if order1.customer_id != order2.customer_id:
+                # Check if the pickup times are 10 minutes apar t or if the pickup time is before reaching the kitchen
+                pickup_time1 = datetime.strptime(order1.pickup_time, '%I:%M %p')
+                pickup_time2 = datetime.strptime(order2.pickup_time, '%I:%M %p')
+                time_diff = (pickup_time2 - pickup_time1).total_seconds() / 60
+                if time_diff == 10 or pickup_time2 <= pickup_time1:
+                    grouped_orders.append([order1, order2])
 
     return grouped_orders
 
@@ -135,6 +165,47 @@ def generate_dataset(num_orders, num_riders):
     return orders, riders
 
 
+
+
+def plot_orders_and_batches(orders, assigned_batches, riders):
+    plt.figure(figsize=(10, 8))
+
+    # Plot orders
+    for order in orders:
+        plt.scatter(order.location[0], order.location[1], color='blue', alpha=0.5)
+
+    # Plot delivery batches and connect them to rider's current location
+    for rider in riders:  # Iterate over riders directly, since riders is a list
+        rider_location = rider.current_location
+        rider_id = rider.rider_id  # Access rider ID if needed
+        if rider_id in assigned_batches:
+            batches = assigned_batches[rider_id]
+            for batch in batches:
+                batch_destination = batch.destination
+                plt.scatter(batch_destination[0], batch_destination[1], color='green', marker='s')
+                plt.plot([rider_location[0], batch_destination[0]], [rider_location[1], batch_destination[1]],
+                         color='orange', linestyle='-', linewidth=2, alpha=0.5)
+                for order in batch.orders:
+                    plt.plot([order.location[0], batch_destination[0]], [order.location[1], batch_destination[1]],
+                             color='gray', linestyle='--', alpha=0.5)
+
+    # Plot rider's current location
+    for rider in riders:
+        plt.scatter(rider.current_location[0], rider.current_location[1], color='red', marker='^')
+
+    # Create custom patches for the legend
+    orders_patch = mpatches.Patch(color='blue', label='Orders')
+    batch_destination_patch = mpatches.Patch(color='green', label='Batch Destination')
+    rider_location_patch = mpatches.Patch(color='red', label='Rider Location')
+
+    plt.xlabel('X Coordinate')
+    plt.ylabel('Y Coordinate')
+    plt.title('Orders, Riders, and Delivery Batches')
+    plt.legend(handles=[orders_patch, batch_destination_patch, rider_location_patch])
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == "__main__":
     # Generate a dataset with 20 orders and 5 riders
     orders, riders = generate_dataset(20, 5)
@@ -166,3 +237,4 @@ if __name__ == "__main__":
                 print(
                     f"- Order ID: {order.order_id}, Kitchen ID: {order.kitchen_id}, Customer ID: {order.customer_id}, Pickup Time: {order.pickup_time}, Location: {order.location}")
             print()
+    plot_orders_and_batches(orders, assigned_batches, riders)
